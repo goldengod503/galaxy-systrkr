@@ -12,6 +12,7 @@ pub struct RingBuffer<T: Copy + Default, const N: usize> {
 
 impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     pub fn new() -> Self {
+        assert!(N > 0, "RingBuffer capacity N must be > 0");
         Self {
             buf: array::from_fn(|_| T::default()),
             len: 0,

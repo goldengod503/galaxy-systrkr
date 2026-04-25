@@ -69,7 +69,8 @@ impl IntelSysfs {
         let now = Instant::now();
         let prev = self.last.replace((now, busy_us));
         let (prev_t, prev_busy) = prev?;
-        let dt_us = now.saturating_duration_since(prev_t).as_micros() as u64;
+        let dt_us = u64::try_from(now.saturating_duration_since(prev_t).as_micros())
+            .unwrap_or(u64::MAX);
         if dt_us == 0 {
             return None;
         }

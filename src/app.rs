@@ -74,8 +74,33 @@ impl cosmic::Application for App {
                 Task::none()
             }
             Message::TogglePopup => {
-                // Filled in by Task 13.
-                Task::none()
+                use cosmic::iced::window::Id;
+                use cosmic::surface::action::{app_popup, destroy_popup};
+
+                if let Some(id) = self.popup_id.take() {
+                    return cosmic::task::message(cosmic::Action::Cosmic(
+                        cosmic::app::Action::Surface(destroy_popup(id)),
+                    ));
+                }
+
+                return cosmic::task::message(cosmic::Action::Cosmic(
+                    cosmic::app::Action::Surface(app_popup::<App>(
+                        |state: &mut App| {
+                            let new_id = Id::unique();
+                            state.popup_id = Some(new_id);
+                            state.core.applet.get_popup_settings(
+                                state.core.main_window_id().unwrap(),
+                                new_id,
+                                Some((300, 360)),
+                                None,
+                                None,
+                            )
+                        },
+                        Some(Box::new(|state: &App| {
+                            crate::popup::view(state).map(cosmic::Action::App)
+                        })),
+                    )),
+                ));
             }
             Message::PopupClosed => {
                 self.popup_id = None;
@@ -129,6 +154,20 @@ impl cosmic::Application for App {
 
     fn subscription(&self) -> Subscription<Message> {
         time::every(TICK_INTERVAL).map(|_| Message::Tick)
+    }
+
+    fn view_window(&self, _id: cosmic::iced::window::Id) -> Element<'_, Message> {
+        crate::popup::view(self)
+    }
+
+    fn on_close_requested(&self, _id: cosmic::iced::window::Id) -> Option<Message> {
+        Some(Message::PopupClosed)
+    }
+}
+
+impl App {
+    pub fn gpu_name(&self) -> &str {
+        self.sampler.gpu_name()
     }
 }
 

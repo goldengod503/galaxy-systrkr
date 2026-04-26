@@ -7,6 +7,7 @@ use super::{GpuBackend, GpuSample};
 pub struct IntelSysfs {
     card_path: PathBuf,
     name: String,
+    pdev: String,
     last: Option<(Instant, u64)>,
 }
 
@@ -35,9 +36,14 @@ impl IntelSysfs {
                 continue;
             }
             let name = read_intel_name(&device);
+            let pdev = fs::read_link(&device)
+                .ok()
+                .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
+                .unwrap_or_default();
             return Some(Self {
                 card_path: card,
                 name,
+                pdev,
                 last: None,
             });
         }
@@ -48,6 +54,14 @@ impl IntelSysfs {
 impl GpuBackend for IntelSysfs {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn pdev(&self) -> &str {
+        &self.pdev
+    }
+
+    fn is_nvidia(&self) -> bool {
+        false
     }
 
     fn sample(&mut self) -> GpuSample {

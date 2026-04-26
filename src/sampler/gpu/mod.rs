@@ -15,6 +15,12 @@ pub trait GpuBackend: Send {
 
     /// Read one sample. Individual fields may be `None` on partial failure.
     fn sample(&mut self) -> GpuSample;
+
+    /// PCI device address like "0000:2b:00.0" or empty if not applicable.
+    fn pdev(&self) -> &str;
+
+    /// True if this is the NVIDIA backend (driver doesn't populate fdinfo).
+    fn is_nvidia(&self) -> bool;
 }
 
 /// Auto-detect available GPU backends in priority order:

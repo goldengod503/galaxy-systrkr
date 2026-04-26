@@ -23,6 +23,14 @@ impl GpuBackend for NoGpu {
         &self.name
     }
 
+    fn pdev(&self) -> &str {
+        ""
+    }
+
+    fn is_nvidia(&self) -> bool {
+        false
+    }
+
     fn sample(&mut self) -> GpuSample {
         GpuSample::default()
     }

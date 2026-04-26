@@ -6,6 +6,7 @@ use super::{GpuBackend, GpuSample};
 pub struct AmdSysfs {
     card_path: PathBuf,
     name: String,
+    pdev: String,
 }
 
 impl AmdSysfs {
@@ -23,9 +24,14 @@ impl AmdSysfs {
                 continue;
             }
             let name = read_amdgpu_name(&device).unwrap_or_else(|| "AMD GPU".to_string());
+            let pdev = fs::read_link(&device)
+                .ok()
+                .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
+                .unwrap_or_default();
             return Some(Self {
                 card_path: card,
                 name,
+                pdev,
             });
         }
         None
@@ -39,6 +45,14 @@ impl AmdSysfs {
 impl GpuBackend for AmdSysfs {
     fn name(&self) -> &str {
         &self.name
+    }
+
+    fn pdev(&self) -> &str {
+        &self.pdev
+    }
+
+    fn is_nvidia(&self) -> bool {
+        false
     }
 
     fn sample(&mut self) -> GpuSample {

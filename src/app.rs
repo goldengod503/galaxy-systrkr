@@ -4,7 +4,7 @@ use cosmic::app::{Core, Task};
 use cosmic::iced::{time, widget::canvas::Cache, Subscription};
 use cosmic::Element;
 
-use crate::history::RingBuffer;
+use crate::history::RingBuf;
 use crate::sampler::{Sample, Sampler};
 
 pub const HISTORY_LEN: usize = 60;
@@ -21,8 +21,8 @@ pub enum Message {
 pub struct App {
     core: Core,
     sampler: Sampler,
-    pub(crate) cpu_history: RingBuffer<f32, HISTORY_LEN>,
-    pub(crate) gpu_history: RingBuffer<f32, HISTORY_LEN>,
+    pub(crate) cpu_history: RingBuf<f32>,
+    pub(crate) gpu_history: RingBuf<f32>,
     pub(crate) latest: Sample,
     pub(crate) cpu_cache: Cache,
     pub(crate) gpu_cache: Cache,
@@ -49,8 +49,8 @@ impl cosmic::Application for App {
         let app = Self {
             core,
             sampler: Sampler::new(),
-            cpu_history: RingBuffer::new(),
-            gpu_history: RingBuffer::new(),
+            cpu_history: RingBuf::new(HISTORY_LEN),
+            gpu_history: RingBuf::new(HISTORY_LEN),
             latest: Sample::default(),
             cpu_cache: Cache::default(),
             gpu_cache: Cache::default(),

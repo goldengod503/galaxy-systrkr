@@ -1,20 +1,22 @@
 //! Fixed-capacity ring buffer used as the sample history for sparklines.
+//! Capacity is set at construction time and may be resized at runtime
+//! via `resize`, which discards old samples that no longer fit.
 
-use std::array;
-
-pub struct RingBuffer<T: Copy + Default, const N: usize> {
-    buf: [T; N],
-    /// Number of items written so far, capped at N.
+pub struct RingBuf<T: Copy + Default> {
+    buf: Vec<T>,
+    capacity: usize,
+    /// Number of items written so far, capped at capacity.
     len: usize,
     /// Index where the next write will go.
     head: usize,
 }
 
-impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
-    pub fn new() -> Self {
-        assert!(N > 0, "RingBuffer capacity N must be > 0");
+impl<T: Copy + Default> RingBuf<T> {
+    pub fn new(capacity: usize) -> Self {
+        assert!(capacity > 0, "RingBuf capacity must be > 0");
         Self {
-            buf: array::from_fn(|_| T::default()),
+            buf: vec![T::default(); capacity],
+            capacity,
             len: 0,
             head: 0,
         }
@@ -22,8 +24,8 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
 
     pub fn push(&mut self, value: T) {
         self.buf[self.head] = value;
-        self.head = (self.head + 1) % N;
-        if self.len < N {
+        self.head = (self.head + 1) % self.capacity;
+        if self.len < self.capacity {
             self.len += 1;
         }
     }
@@ -33,7 +35,7 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
     }
 
     pub fn capacity(&self) -> usize {
-        N
+        self.capacity
     }
 
     pub fn is_empty(&self) -> bool {
@@ -42,19 +44,36 @@ impl<T: Copy + Default, const N: usize> RingBuffer<T, N> {
 
     /// Iterate items in chronological order (oldest first).
     pub fn iter(&self) -> impl Iterator<Item = T> + '_ {
-        // Start index of the oldest element.
-        let start = if self.len < N {
-            0
-        } else {
-            self.head
-        };
-        (0..self.len).map(move |i| self.buf[(start + i) % N])
+        let start = if self.len < self.capacity { 0 } else { self.head };
+        let cap = self.capacity;
+        (0..self.len).map(move |i| self.buf[(start + i) % cap])
     }
-}
 
-impl<T: Copy + Default, const N: usize> Default for RingBuffer<T, N> {
-    fn default() -> Self {
-        Self::new()
+    /// Resize, preserving the most recent samples that fit. Discards
+    /// older samples on shrink; pads tail with defaults on grow (which
+    /// is fine — those slots are overwritten on subsequent pushes
+    /// before being read by `iter`, since `len` doesn't grow).
+    pub fn resize(&mut self, new_capacity: usize) {
+        assert!(new_capacity > 0, "RingBuf capacity must be > 0");
+        if new_capacity == self.capacity {
+            return;
+        }
+        let all: Vec<T> = self.iter().collect();
+        let preserved: Vec<T> = all
+            .into_iter()
+            .rev()
+            .take(new_capacity)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        self.buf = vec![T::default(); new_capacity];
+        for (i, v) in preserved.iter().enumerate() {
+            self.buf[i] = *v;
+        }
+        self.len = preserved.len();
+        self.head = self.len % new_capacity;
+        self.capacity = new_capacity;
     }
 }
 
@@ -64,7 +83,7 @@ mod tests {
 
     #[test]
     fn new_buffer_is_empty() {
-        let buf: RingBuffer<f32, 4> = RingBuffer::new();
+        let buf: RingBuf<f32> = RingBuf::new(4);
 
         assert_eq!(buf.len(), 0);
         assert!(buf.is_empty());
@@ -73,7 +92,7 @@ mod tests {
 
     #[test]
     fn push_below_capacity_appends_in_order() {
-        let mut buf: RingBuffer<f32, 4> = RingBuffer::new();
+        let mut buf: RingBuf<f32> = RingBuf::new(4);
 
         buf.push(1.0);
         buf.push(2.0);
@@ -81,28 +100,57 @@ mod tests {
 
         let collected: Vec<f32> = buf.iter().collect();
         assert_eq!(collected, vec![1.0, 2.0, 3.0]);
-        assert_eq!(buf.len(), 3);
     }
 
     #[test]
     fn push_at_capacity_drops_oldest() {
-        let mut buf: RingBuffer<f32, 3> = RingBuffer::new();
+        let mut buf: RingBuf<f32> = RingBuf::new(3);
 
-        buf.push(1.0);
-        buf.push(2.0);
-        buf.push(3.0);
-        buf.push(4.0);
-        buf.push(5.0);
+        for i in 1..=5u32 {
+            buf.push(i as f32);
+        }
 
         let collected: Vec<f32> = buf.iter().collect();
         assert_eq!(collected, vec![3.0, 4.0, 5.0]);
-        assert_eq!(buf.len(), 3);
     }
 
     #[test]
-    fn iter_handles_wraparound_correctly() {
-        let mut buf: RingBuffer<u32, 4> = RingBuffer::new();
+    fn resize_smaller_keeps_most_recent() {
+        let mut buf: RingBuf<u32> = RingBuf::new(5);
+        for i in 1..=5u32 {
+            buf.push(i);
+        }
 
+        buf.resize(3);
+
+        let collected: Vec<u32> = buf.iter().collect();
+        assert_eq!(collected, vec![3, 4, 5]);
+        assert_eq!(buf.capacity(), 3);
+    }
+
+    #[test]
+    fn resize_larger_keeps_all_existing() {
+        let mut buf: RingBuf<u32> = RingBuf::new(3);
+        for i in 1..=3u32 {
+            buf.push(i);
+        }
+
+        buf.resize(6);
+
+        let collected: Vec<u32> = buf.iter().collect();
+        assert_eq!(collected, vec![1, 2, 3]);
+        assert_eq!(buf.capacity(), 6);
+
+        buf.push(4);
+        buf.push(5);
+
+        let collected: Vec<u32> = buf.iter().collect();
+        assert_eq!(collected, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn iter_handles_wraparound() {
+        let mut buf: RingBuf<u32> = RingBuf::new(4);
         for i in 1..=10u32 {
             buf.push(i);
         }

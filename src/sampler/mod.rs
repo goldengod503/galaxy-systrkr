@@ -2,6 +2,7 @@
 
 pub mod cpu;
 pub mod gpu;
+pub mod procs;
 
 #[derive(Clone, Debug, Default)]
 pub struct Sample {

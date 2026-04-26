@@ -193,6 +193,10 @@ impl App {
     pub fn gpu_name(&self) -> &str {
         self.sampler.gpu_name()
     }
+
+    pub fn gpu_proc_backend_available(&self) -> bool {
+        self.sampler.gpu_proc_backend_available()
+    }
 }
 
 fn detect_system_monitor() -> Option<&'static str> {

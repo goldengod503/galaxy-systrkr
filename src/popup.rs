@@ -12,8 +12,13 @@ pub fn view(app: &App) -> Element<'_, Message> {
 
     let body = col::with_children(vec![
         cpu_section(cpu).into(),
+        crate::widgets::proc_list::cpu_list(&app.latest.top_cpu_procs),
         divider::horizontal::default().into(),
         gpu_section(&gpu_name, gpu).into(),
+        crate::widgets::proc_list::gpu_list(
+            &app.latest.top_gpu_procs,
+            app.gpu_proc_backend_available(),
+        ),
         divider::horizontal::default().into(),
         footer(app.system_monitor_bin).into(),
     ])

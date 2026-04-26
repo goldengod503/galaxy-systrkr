@@ -1,14 +1,11 @@
-use std::time::Duration;
-
 use cosmic::app::{Core, Task};
+use cosmic::cosmic_config::{self, CosmicConfigEntry};
 use cosmic::iced::{time, widget::canvas::Cache, Subscription};
 use cosmic::Element;
 
+use crate::config::{SystrkrConfig, CONFIG_ID, CONFIG_VERSION};
 use crate::history::RingBuf;
 use crate::sampler::{Sample, Sampler};
-
-pub const HISTORY_LEN: usize = 60;
-pub const TICK_INTERVAL: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Debug)]
 pub enum Message {
@@ -16,6 +13,7 @@ pub enum Message {
     TogglePopup,
     PopupClosed,
     OpenSystemMonitor,
+    ConfigUpdated(SystrkrConfig),
 }
 
 pub struct App {
@@ -28,6 +26,7 @@ pub struct App {
     pub(crate) gpu_cache: Cache,
     pub(crate) popup_id: Option<cosmic::iced::window::Id>,
     pub(crate) system_monitor_bin: Option<&'static str>,
+    pub(crate) config: SystrkrConfig,
 }
 
 impl cosmic::Application for App {
@@ -46,16 +45,22 @@ impl cosmic::Application for App {
     }
 
     fn init(core: Core, _flags: ()) -> (Self, Task<Message>) {
+        let config = cosmic_config::Config::new(CONFIG_ID, CONFIG_VERSION)
+            .ok()
+            .and_then(|c| SystrkrConfig::get_entry(&c).ok())
+            .unwrap_or_default();
+        let cap = config.history_capacity();
         let app = Self {
             core,
             sampler: Sampler::new(),
-            cpu_history: RingBuf::new(HISTORY_LEN),
-            gpu_history: RingBuf::new(HISTORY_LEN),
+            cpu_history: RingBuf::new(cap),
+            gpu_history: RingBuf::new(cap),
             latest: Sample::default(),
             cpu_cache: Cache::default(),
             gpu_cache: Cache::default(),
             popup_id: None,
             system_monitor_bin: detect_system_monitor(),
+            config,
         };
         (app, Task::none())
     }
@@ -112,6 +117,17 @@ impl cosmic::Application for App {
                 spawn_system_monitor(self.system_monitor_bin);
                 Task::none()
             }
+            Message::ConfigUpdated(new_cfg) => {
+                let cap = new_cfg.history_capacity();
+                if cap != self.cpu_history.capacity() {
+                    self.cpu_history.resize(cap);
+                    self.gpu_history.resize(cap);
+                }
+                self.config = new_cfg;
+                self.cpu_cache.clear();
+                self.gpu_cache.clear();
+                Task::none()
+            }
         }
     }
 
@@ -142,10 +158,12 @@ impl cosmic::Application for App {
             .map(|v| format!("GPU {v:.0}%"))
             .unwrap_or_else(|| "GPU —".into());
 
+        let cap = self.config.history_capacity();
+
         let cpu_column = col::with_children(vec![
             text(cpu_pct).size(10).into(),
             Canvas::new(
-                Sparkline::new(cpu_samples, HISTORY_LEN, &self.cpu_cache).tint(cpu_color),
+                Sparkline::new(cpu_samples, cap, &self.cpu_cache).tint(cpu_color),
             )
             .width(Length::Fixed(48.0))
             .height(Length::Fixed(20.0))
@@ -157,7 +175,7 @@ impl cosmic::Application for App {
         let gpu_column = col::with_children(vec![
             text(gpu_pct).size(10).into(),
             Canvas::new(
-                Sparkline::new(gpu_samples, HISTORY_LEN, &self.gpu_cache).tint(gpu_color),
+                Sparkline::new(gpu_samples, cap, &self.gpu_cache).tint(gpu_color),
             )
             .width(Length::Fixed(48.0))
             .height(Length::Fixed(20.0))
@@ -177,7 +195,12 @@ impl cosmic::Application for App {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        time::every(TICK_INTERVAL).map(|_| Message::Tick)
+        use cosmic::cosmic_config::config_subscription;
+
+        let tick = time::every(self.config.refresh_duration()).map(|_| Message::Tick);
+        let cfg = config_subscription::<_, SystrkrConfig>(0u8, CONFIG_ID.into(), CONFIG_VERSION)
+            .map(|update| Message::ConfigUpdated(update.config));
+        Subscription::batch([tick, cfg])
     }
 
     fn view_window(&self, _id: cosmic::iced::window::Id) -> Element<'_, Message> {

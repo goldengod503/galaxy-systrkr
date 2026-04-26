@@ -6,10 +6,12 @@ use cosmic::{Renderer, Theme};
 /// Renders a filled-area sparkline using values in 0..=100.
 ///
 /// Values are rendered chronologically left → right; the most recent value is on the right edge.
+/// `tint` is `None` to fall back to the theme accent.
 pub struct Sparkline<'a> {
     samples: Vec<f32>,
     capacity: usize,
     cache: &'a Cache,
+    tint: Option<Color>,
 }
 
 impl<'a> Sparkline<'a> {
@@ -18,7 +20,13 @@ impl<'a> Sparkline<'a> {
             samples,
             capacity,
             cache,
+            tint: None,
         }
+    }
+
+    pub fn tint(mut self, color: Color) -> Self {
+        self.tint = Some(color);
+        self
     }
 }
 
@@ -34,7 +42,14 @@ impl<'a, Message> Program<Message, Theme, Renderer> for Sparkline<'a> {
         _cursor: cosmic::iced::mouse::Cursor,
     ) -> Vec<Geometry> {
         let geometry = self.cache.draw(renderer, bounds.size(), |frame: &mut Frame| {
-            draw_sparkline(frame, bounds.size(), &self.samples, self.capacity, theme);
+            draw_sparkline(
+                frame,
+                bounds.size(),
+                &self.samples,
+                self.capacity,
+                self.tint,
+                theme,
+            );
         });
         vec![geometry]
     }
@@ -45,25 +60,25 @@ fn draw_sparkline(
     size: Size,
     samples: &[f32],
     capacity: usize,
+    tint: Option<Color>,
     theme: &Theme,
 ) {
     if samples.is_empty() || size.width <= 0.0 || size.height <= 0.0 {
         return;
     }
 
-    let cosmic = theme.cosmic();
-    let accent = cosmic.accent_color();
-    let stroke_color = Color {
-        r: accent.red,
-        g: accent.green,
-        b: accent.blue,
-        a: 1.0,
-    };
+    let stroke_color = tint.unwrap_or_else(|| {
+        let accent = theme.cosmic().accent_color();
+        Color {
+            r: accent.red,
+            g: accent.green,
+            b: accent.blue,
+            a: 1.0,
+        }
+    });
     let fill_color = Color {
-        r: accent.red,
-        g: accent.green,
-        b: accent.blue,
         a: 0.35,
+        ..stroke_color
     };
 
     let n = samples.len().min(capacity);

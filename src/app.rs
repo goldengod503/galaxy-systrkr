@@ -116,42 +116,77 @@ impl cosmic::Application for App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        use cosmic::iced::{Alignment, Length};
-        use cosmic::widget::{column as col, container, mouse_area, row, text};
+        use cosmic::iced::{Alignment, Color, Length};
+        use cosmic::widget::{autosize, column as col, container, mouse_area, row, text, Id};
         use cosmic::widget::canvas::Canvas;
 
         use crate::widgets::Sparkline;
 
+        let theme = cosmic::theme::active();
+        let cosmic_palette = theme.cosmic();
+        let accent = cosmic_palette.accent_color();
+        let success = cosmic_palette.success_color();
+        let cpu_color = Color {
+            r: accent.red,
+            g: accent.green,
+            b: accent.blue,
+            a: 1.0,
+        };
+        let gpu_color = Color {
+            r: success.red,
+            g: success.green,
+            b: success.blue,
+            a: 1.0,
+        };
+
         let cpu_samples: Vec<f32> = self.cpu_history.iter().collect();
         let gpu_samples: Vec<f32> = self.gpu_history.iter().collect();
 
+        let cpu_pct = self
+            .latest
+            .cpu
+            .utilization_pct
+            .map(|v| format!("CPU {v:.0}%"))
+            .unwrap_or_else(|| "CPU —".into());
+        let gpu_pct = self
+            .latest
+            .gpu
+            .utilization_pct
+            .map(|v| format!("GPU {v:.0}%"))
+            .unwrap_or_else(|| "GPU —".into());
+
         let cpu_column = col::with_children(vec![
-            text("CPU").size(8).into(),
-            Canvas::new(Sparkline::new(cpu_samples, HISTORY_LEN, &self.cpu_cache))
-                .width(Length::Fixed(40.0))
-                .height(Length::Fixed(20.0))
-                .into(),
+            text(cpu_pct).size(10).into(),
+            Canvas::new(
+                Sparkline::new(cpu_samples, HISTORY_LEN, &self.cpu_cache).tint(cpu_color),
+            )
+            .width(Length::Fixed(48.0))
+            .height(Length::Fixed(20.0))
+            .into(),
         ])
         .align_x(Alignment::Center)
         .spacing(2);
 
         let gpu_column = col::with_children(vec![
-            text("GPU").size(8).into(),
-            Canvas::new(Sparkline::new(gpu_samples, HISTORY_LEN, &self.gpu_cache))
-                .width(Length::Fixed(40.0))
-                .height(Length::Fixed(20.0))
-                .into(),
+            text(gpu_pct).size(10).into(),
+            Canvas::new(
+                Sparkline::new(gpu_samples, HISTORY_LEN, &self.gpu_cache).tint(gpu_color),
+            )
+            .width(Length::Fixed(48.0))
+            .height(Length::Fixed(20.0))
+            .into(),
         ])
         .align_x(Alignment::Center)
         .spacing(2);
 
         let content = row::with_children(vec![cpu_column.into(), gpu_column.into()])
-            .spacing(6)
+            .spacing(8)
             .align_y(Alignment::Center);
 
-        mouse_area(container(content).padding(4))
-            .on_press(Message::TogglePopup)
-            .into()
+        let button = mouse_area(container(content).padding(4))
+            .on_press(Message::TogglePopup);
+
+        autosize::autosize(button, Id::new("systrkr-applet")).into()
     }
 
     fn subscription(&self) -> Subscription<Message> {

@@ -1,6 +1,6 @@
 use cosmic::iced::Length;
-use cosmic::widget::{button, column as col, container, divider, row, text};
-use cosmic::Element;
+use cosmic::widget::{button, column as col, divider, row, text};
+use cosmic::{Application, Element};
 
 use crate::app::{App, Message};
 use crate::sampler::{CpuSample, GpuSample};
@@ -10,19 +10,17 @@ pub fn view(app: &App) -> Element<'_, Message> {
     let gpu = &app.latest.gpu;
     let gpu_name = app.gpu_name().to_string();
 
-    container(
-        col::with_children(vec![
-            cpu_section(cpu).into(),
-            divider::horizontal::default().into(),
-            gpu_section(&gpu_name, gpu).into(),
-            divider::horizontal::default().into(),
-            footer(app.system_monitor_bin).into(),
-        ])
-        .spacing(8)
-        .padding(12),
-    )
-    .width(Length::Fixed(280.0))
-    .into()
+    let body = col::with_children(vec![
+        cpu_section(cpu).into(),
+        divider::horizontal::default().into(),
+        gpu_section(&gpu_name, gpu).into(),
+        divider::horizontal::default().into(),
+        footer(app.system_monitor_bin).into(),
+    ])
+    .spacing(8)
+    .padding(12);
+
+    app.core().applet.popup_container(body).into()
 }
 
 fn cpu_section(s: &CpuSample) -> Element<'_, Message> {

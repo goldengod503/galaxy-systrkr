@@ -24,20 +24,39 @@ pub trait GpuBackend: Send {
     fn is_nvidia(&self) -> bool;
 }
 
-/// Auto-detect available GPU backends in priority order:
-/// NVIDIA (NVML) → AMD sysfs → Intel sysfs → no-op fallback.
-pub fn probe() -> Box<dyn GpuBackend> {
-    #[cfg(feature = "nvidia")]
-    if let Some(b) = nvml::Nvml::probe() {
-        return Box::new(b);
-    }
-    if let Some(b) = amd::AmdSysfs::probe() {
-        return Box::new(b);
-    }
-    if let Some(b) = intel::IntelSysfs::probe() {
-        return Box::new(b);
+/// Select GPU backend for the given index using `enumerate()` to identify the card.
+/// Falls back to index 0 if the requested index is out of range, and to the no-op
+/// backend if no GPU is found at all.
+pub fn probe_index(index: usize) -> Box<dyn GpuBackend> {
+    let infos = enumerate();
+    let target = infos.get(index).or_else(|| infos.first());
+
+    if let Some(info) = target {
+        #[cfg(feature = "nvidia")]
+        if info.is_nvidia {
+            // Count only the NVIDIA entries that appear before this one in the
+            // enumeration list to get the NVML device index.
+            let nvml_idx = infos[..info.index]
+                .iter()
+                .filter(|g| g.is_nvidia)
+                .count() as u32;
+            if let Some(b) = nvml::Nvml::probe_index(nvml_idx) {
+                return Box::new(b);
+            }
+        }
+        if let Some(b) = amd::AmdSysfs::probe_pdev(&info.pdev) {
+            return Box::new(b);
+        }
+        if let Some(b) = intel::IntelSysfs::probe_pdev(&info.pdev) {
+            return Box::new(b);
+        }
     }
     Box::new(none::NoGpu::new())
+}
+
+/// Auto-detect the first available GPU. Equivalent to `probe_index(0)`.
+pub fn probe() -> Box<dyn GpuBackend> {
+    probe_index(0)
 }
 
 #[derive(Debug, Clone)]

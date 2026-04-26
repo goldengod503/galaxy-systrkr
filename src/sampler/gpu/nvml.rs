@@ -11,10 +11,15 @@ pub struct Nvml {
     pdev: String,
     /// `true` once we've already logged a sample failure for this backend.
     sample_warned: bool,
+    index: u32,
 }
 
 impl Nvml {
     pub fn probe() -> Option<Self> {
+        Self::probe_index(0)
+    }
+
+    pub fn probe_index(idx: u32) -> Option<Self> {
         let lib = match NvmlLib::init() {
             Ok(l) => l,
             Err(e) => {
@@ -22,15 +27,13 @@ impl Nvml {
                 return None;
             }
         };
-        let name = lib
-            .device_by_index(0)
+        let device = lib.device_by_index(idx).ok()?;
+        let name = device
+            .name()
+            .unwrap_or_else(|_| format!("NVIDIA GPU {idx}"));
+        let pdev = device
+            .pci_info()
             .ok()
-            .and_then(|d| d.name().ok())
-            .unwrap_or_else(|| "NVIDIA GPU".to_string());
-        let pdev = lib
-            .device_by_index(0)
-            .ok()
-            .and_then(|d| d.pci_info().ok())
             .map(|p| p.bus_id.to_lowercase())
             .unwrap_or_default();
         Some(Self {
@@ -38,6 +41,7 @@ impl Nvml {
             name,
             pdev,
             sample_warned: false,
+            index: idx,
         })
     }
 }
@@ -56,11 +60,11 @@ impl GpuBackend for Nvml {
     }
 
     fn sample(&mut self) -> GpuSample {
-        let device = match self.lib.device_by_index(0) {
+        let device = match self.lib.device_by_index(self.index) {
             Ok(d) => d,
             Err(e) => {
                 if !self.sample_warned {
-                    warn!(error = %e, "NVML device_by_index(0) failed");
+                    warn!(error = %e, index = self.index, "NVML device_by_index failed");
                     self.sample_warned = true;
                 }
                 return GpuSample::default();

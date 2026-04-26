@@ -50,9 +50,10 @@ impl cosmic::Application for App {
             .and_then(|c| SystrkrConfig::get_entry(&c).ok())
             .unwrap_or_default();
         let cap = config.history_capacity();
+        let sampler = Sampler::new(&config);
         let app = Self {
             core,
-            sampler: Sampler::new(),
+            sampler,
             cpu_history: RingBuf::new(cap),
             gpu_history: RingBuf::new(cap),
             latest: Sample::default(),

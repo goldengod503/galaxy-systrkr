@@ -28,24 +28,54 @@ impl IntelSysfs {
             {
                 continue;
             }
+            if let Some(backend) = Self::probe_specific(&card) {
+                return Some(backend);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn probe_specific(card: &Path) -> Option<Self> {
+        let device = card.join("device");
+        if !is_intel(&device) {
+            return None;
+        }
+        if find_render_engine(card).is_none() {
+            return None;
+        }
+        let name = read_intel_name(&device);
+        let pdev = fs::read_link(&device)
+            .ok()
+            .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
+            .unwrap_or_default();
+        Some(Self {
+            card_path: card.to_path_buf(),
+            name,
+            pdev,
+            last: None,
+        })
+    }
+
+    pub fn probe_pdev(pdev: &str) -> Option<Self> {
+        let drm_root = std::path::Path::new("/sys/class/drm");
+        let entries = std::fs::read_dir(drm_root).ok()?;
+        for entry in entries.flatten() {
+            let card = entry.path();
+            let card_name = card
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            if !(card_name.starts_with("card") && !card_name.contains('-')) {
+                continue;
+            }
             let device = card.join("device");
-            if !is_intel(&device) {
-                continue;
-            }
-            if find_render_engine(&card).is_none() {
-                continue;
-            }
-            let name = read_intel_name(&device);
-            let pdev = fs::read_link(&device)
+            let card_pdev = std::fs::read_link(&device)
                 .ok()
                 .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
                 .unwrap_or_default();
-            return Some(Self {
-                card_path: card,
-                name,
-                pdev,
-                last: None,
-            });
+            if card_pdev == pdev {
+                return Self::probe_specific(&card);
+            }
         }
         None
     }

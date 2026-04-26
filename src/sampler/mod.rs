@@ -45,8 +45,8 @@ pub struct Sampler {
 }
 
 impl Sampler {
-    pub fn new() -> Self {
-        let gpu_backend = gpu::probe();
+    pub fn new(cfg: &crate::config::SystrkrConfig) -> Self {
+        let gpu_backend = gpu::probe_index(cfg.gpu_index);
         let gpu_proc_backend = gpu::procs::probe(gpu_backend.pdev(), gpu_backend.is_nvidia());
         Self {
             cpu: CpuSampler::new(),
@@ -80,7 +80,7 @@ impl Sampler {
 
 impl Default for Sampler {
     fn default() -> Self {
-        Self::new()
+        Self::new(&crate::config::SystrkrConfig::default())
     }
 }
 
@@ -90,7 +90,7 @@ mod aggregator_tests {
 
     #[test]
     fn two_consecutive_ticks_dont_panic() {
-        let mut s = Sampler::new();
+        let mut s = Sampler::new(&crate::config::SystrkrConfig::default());
 
         let _ = s.tick();
         let _ = s.tick();

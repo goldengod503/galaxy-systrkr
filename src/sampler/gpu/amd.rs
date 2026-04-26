@@ -16,23 +16,53 @@ impl AmdSysfs {
 
     pub fn probe_in(drm_root: &Path) -> Option<Self> {
         for card in iter_cards(drm_root)? {
+            if let Some(backend) = Self::probe_specific(&card) {
+                return Some(backend);
+            }
+        }
+        None
+    }
+
+    pub(crate) fn probe_specific(card: &Path) -> Option<Self> {
+        let device = card.join("device");
+        if !is_amdgpu(&device) {
+            return None;
+        }
+        if !device.join("gpu_busy_percent").is_file() {
+            return None;
+        }
+        let name = read_amdgpu_name(&device).unwrap_or_else(|| "AMD GPU".to_string());
+        let pdev = fs::read_link(&device)
+            .ok()
+            .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
+            .unwrap_or_default();
+        Some(Self {
+            card_path: card.to_path_buf(),
+            name,
+            pdev,
+        })
+    }
+
+    pub fn probe_pdev(pdev: &str) -> Option<Self> {
+        let drm_root = std::path::Path::new("/sys/class/drm");
+        let entries = std::fs::read_dir(drm_root).ok()?;
+        for entry in entries.flatten() {
+            let card = entry.path();
+            let card_name = card
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
+            if !(card_name.starts_with("card") && !card_name.contains('-')) {
+                continue;
+            }
             let device = card.join("device");
-            if !is_amdgpu(&device) {
-                continue;
-            }
-            if !device.join("gpu_busy_percent").is_file() {
-                continue;
-            }
-            let name = read_amdgpu_name(&device).unwrap_or_else(|| "AMD GPU".to_string());
-            let pdev = fs::read_link(&device)
+            let card_pdev = std::fs::read_link(&device)
                 .ok()
                 .and_then(|p| p.file_name().and_then(|n| n.to_str().map(|s| s.to_string())))
                 .unwrap_or_default();
-            return Some(Self {
-                card_path: card,
-                name,
-                pdev,
-            });
+            if card_pdev == pdev {
+                return Self::probe_specific(&card);
+            }
         }
         None
     }

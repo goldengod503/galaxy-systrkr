@@ -116,28 +116,15 @@ impl cosmic::Application for App {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        use cosmic::iced::{Alignment, Color, Length};
+        use cosmic::iced::{Alignment, Length};
         use cosmic::widget::{autosize, column as col, container, mouse_area, row, text, Id};
         use cosmic::widget::canvas::Canvas;
 
         use crate::widgets::Sparkline;
 
         let theme = cosmic::theme::active();
-        let cosmic_palette = theme.cosmic();
-        let accent = cosmic_palette.accent_color();
-        let success = cosmic_palette.success_color();
-        let cpu_color = Color {
-            r: accent.red,
-            g: accent.green,
-            b: accent.blue,
-            a: 1.0,
-        };
-        let gpu_color = Color {
-            r: success.red,
-            g: success.green,
-            b: success.blue,
-            a: 1.0,
-        };
+        let cpu_color = threshold_color(&theme, self.latest.cpu.utilization_pct);
+        let gpu_color = threshold_color(&theme, self.latest.gpu.utilization_pct);
 
         let cpu_samples: Vec<f32> = self.cpu_history.iter().collect();
         let gpu_samples: Vec<f32> = self.gpu_history.iter().collect();
@@ -244,5 +231,21 @@ fn spawn_system_monitor(bin: Option<&'static str>) {
         .spawn()
     {
         tracing::warn!(error = %e, bin, "failed to spawn system monitor");
+    }
+}
+
+fn threshold_color(theme: &cosmic::Theme, value: Option<f32>) -> cosmic::iced::Color {
+    use cosmic::iced::Color;
+    let cosmic = theme.cosmic();
+    let palette = match value {
+        Some(v) if v >= 85.0 => cosmic.destructive_color(),
+        Some(v) if v >= 60.0 => cosmic.warning_color(),
+        _ => cosmic.accent_color(),
+    };
+    Color {
+        r: palette.red,
+        g: palette.green,
+        b: palette.blue,
+        a: 1.0,
     }
 }

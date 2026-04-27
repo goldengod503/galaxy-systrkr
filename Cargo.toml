@@ -28,6 +28,7 @@ features = ["applet", "tokio", "wayland", "single-instance"]
 tempfile = "3"
 wiremock = "0.6"
 tokio = { version = "1", features = ["macros", "rt"] }
+serde_json = "1"
 
 [profile.release]
 lto = "thin"

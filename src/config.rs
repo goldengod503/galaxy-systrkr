@@ -1,10 +1,10 @@
 use cosmic::cosmic_config::{self, cosmic_config_derive::CosmicConfigEntry, CosmicConfigEntry};
 
 pub const CONFIG_ID: &str = "com.system76.SysTrkr";
-pub const CONFIG_VERSION: u64 = 1;
+pub const CONFIG_VERSION: u64 = 2;
 
 #[derive(Clone, Debug, PartialEq, CosmicConfigEntry)]
-#[version = 1]
+#[version = 2]
 pub struct SystrkrConfig {
     pub refresh_ms: u64,
     pub history_seconds: u64,
@@ -16,6 +16,8 @@ pub struct SystrkrConfig {
     pub show_net: bool,
     pub show_disk: bool,
     pub gpu_index: usize,
+    pub show_ollama: bool,
+    pub ollama_host: String,
 }
 
 impl Default for SystrkrConfig {
@@ -31,6 +33,8 @@ impl Default for SystrkrConfig {
             show_net: false,
             show_disk: false,
             gpu_index: 0,
+            show_ollama: false,
+            ollama_host: "http://localhost:11434".into(),
         }
     }
 }

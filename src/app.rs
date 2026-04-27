@@ -5,6 +5,7 @@ use cosmic::Element;
 
 use crate::config::{SystrkrConfig, CONFIG_ID, CONFIG_VERSION};
 use crate::history::RingBuf;
+use crate::ollama;
 use crate::sampler::{Sample, Sampler};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,6 +31,8 @@ pub enum Message {
     SetCritThreshold(u8),
     SetShowMetric(Metric, bool),
     SetGpuIndex(usize),
+    OllamaTick,
+    OllamaProbed(ollama::OllamaSnapshot),
 }
 
 pub struct App {
@@ -50,6 +53,9 @@ pub struct App {
     pub(crate) system_monitor_bin: Option<&'static str>,
     pub(crate) config: SystrkrConfig,
     pub(crate) settings_open: bool,
+    pub(crate) ollama_prober: ollama::OllamaProber,
+    pub(crate) ollama_snapshot: ollama::OllamaSnapshot,
+    pub(crate) ollama_probing: bool,
 }
 
 impl cosmic::Application for App {
@@ -74,6 +80,7 @@ impl cosmic::Application for App {
             .unwrap_or_default();
         let cap = config.history_capacity();
         let sampler = Sampler::new(&config);
+        let ollama_prober = ollama::OllamaProber::new(config.ollama_host.clone());
         let app = Self {
             core,
             sampler,
@@ -92,6 +99,9 @@ impl cosmic::Application for App {
             system_monitor_bin: detect_system_monitor(),
             config,
             settings_open: false,
+            ollama_prober,
+            ollama_snapshot: ollama::OllamaSnapshot::default(),
+            ollama_probing: false,
         };
         (app, Task::none())
     }
@@ -163,6 +173,10 @@ impl cosmic::Application for App {
                 Task::none()
             }
             Message::ConfigUpdated(new_cfg) => {
+                if new_cfg.ollama_host != self.config.ollama_host {
+                    self.ollama_prober = ollama::OllamaProber::new(new_cfg.ollama_host.clone());
+                    self.ollama_snapshot = ollama::OllamaSnapshot::default();
+                }
                 let cap = new_cfg.history_capacity();
                 if cap != self.cpu_history.capacity() {
                     self.cpu_history.resize(cap);
@@ -218,6 +232,21 @@ impl cosmic::Application for App {
                 self.config.gpu_index = i;
                 self.persist();
                 self.sampler = Sampler::new(&self.config);
+                Task::none()
+            }
+            Message::OllamaTick => {
+                if self.ollama_probing {
+                    return Task::none();
+                }
+                self.ollama_probing = true;
+                let prober = self.ollama_prober.clone();
+                Task::perform(async move { prober.probe().await }, |snap| {
+                    cosmic::Action::App(Message::OllamaProbed(snap))
+                })
+            }
+            Message::OllamaProbed(snap) => {
+                self.ollama_probing = false;
+                self.ollama_snapshot = snap;
                 Task::none()
             }
         }
@@ -384,7 +413,16 @@ impl cosmic::Application for App {
         let tick = time::every(self.config.refresh_duration()).map(|_| Message::Tick);
         let cfg = config_subscription::<_, SystrkrConfig>(0u8, CONFIG_ID.into(), CONFIG_VERSION)
             .map(|update| Message::ConfigUpdated(update.config));
-        Subscription::batch([tick, cfg])
+
+        let mut subs = vec![tick, cfg];
+
+        if self.config.show_ollama {
+            let probe_tick = time::every(std::time::Duration::from_secs(5))
+                .map(|_| Message::OllamaTick);
+            subs.push(probe_tick);
+        }
+
+        Subscription::batch(subs)
     }
 
     fn view_window(&self, _id: cosmic::iced::window::Id) -> Element<'_, Message> {

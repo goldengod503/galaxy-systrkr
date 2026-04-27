@@ -30,6 +30,11 @@ pub fn view(app: &App) -> Element<'_, Message> {
         ),
     ];
 
+    if app.config.show_ollama {
+        sections.push(divider::horizontal::default().into());
+        sections.push(crate::ollama::view::section(&app.ollama_snapshot));
+    }
+
     if app.settings_open {
         sections.push(divider::horizontal::default().into());
         sections.push(crate::settings::view(app));

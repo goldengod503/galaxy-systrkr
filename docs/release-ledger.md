@@ -1,0 +1,13 @@
+# galaxy-systrkr — Release Ledger
+
+Single source of truth for shipped work. Each entry links to its release doc.
+
+Release docs follow conventions in `~/.claude/docs/conventions/release-docs.md`.
+
+---
+
+## Work Tracking
+
+| ID | Description | Date | Status | Release Doc |
+|----|-------------|------|--------|-------------|
+| GS-01 | Popup gap below panel bar | 2026-05-16 | Done | [GS-01](releases/2026-05-16_GS-01_popup-bar-gap.md) |

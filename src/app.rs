@@ -152,13 +152,18 @@ impl cosmic::Application for App {
                         |state: &mut App| {
                             let new_id = Id::unique();
                             state.popup_id = Some(new_id);
-                            state.core.applet.get_popup_settings(
+                            let mut settings = state.core.applet.get_popup_settings(
                                 state.core.main_window_id().unwrap(),
                                 new_id,
                                 Some((300, 360)),
                                 None,
                                 None,
-                            )
+                            );
+                            let extra_gap: i32 = 14;
+                            let (ox, oy) = settings.positioner.offset;
+                            settings.positioner.offset =
+                                (ox + ox.signum() * extra_gap, oy + oy.signum() * extra_gap);
+                            settings
                         },
                         Some(Box::new(|state: &App| {
                             crate::popup::view(state).map(cosmic::Action::App)

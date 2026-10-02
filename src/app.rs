@@ -141,34 +141,31 @@ impl cosmic::Application for App {
                 use cosmic::surface::action::{app_popup, destroy_popup};
 
                 if let Some(id) = self.popup_id.take() {
-                    return cosmic::task::message(cosmic::Action::Cosmic(
-                        cosmic::app::Action::Surface(destroy_popup(id)),
-                    ));
+                    return cosmic::task::message(cosmic::Action::Surface(destroy_popup(id)));
                 }
 
-                cosmic::task::message(cosmic::Action::Cosmic(
-                    cosmic::app::Action::Surface(app_popup::<App>(
-                        |state: &mut App| {
-                            let new_id = Id::unique();
-                            state.popup_id = Some(new_id);
-                            let mut settings = state.core.applet.get_popup_settings(
-                                state.core.main_window_id().unwrap(),
-                                new_id,
-                                Some((300, 360)),
-                                None,
-                                None,
-                            );
-                            let extra_gap: i32 = 14;
-                            let (ox, oy) = settings.positioner.offset;
-                            settings.positioner.offset =
-                                (ox + ox.signum() * extra_gap, oy + oy.signum() * extra_gap);
-                            settings
-                        },
-                        Some(Box::new(|state: &App| {
-                            crate::popup::view(state).map(cosmic::Action::App)
-                        })),
-                    )),
-                ))
+                cosmic::task::message(cosmic::Action::Surface(app_popup::<App>(
+                    |_| Default::default(),
+                    |state: &mut App| {
+                        let new_id = Id::unique();
+                        state.popup_id = Some(new_id);
+                        let mut settings = state.core.applet.get_popup_settings(
+                            state.core.main_window_id().unwrap(),
+                            new_id,
+                            Some((300, 360)),
+                            None,
+                            None,
+                        );
+                        let extra_gap: i32 = 14;
+                        let (ox, oy) = settings.positioner.offset;
+                        settings.positioner.offset =
+                            (ox + ox.signum() * extra_gap, oy + oy.signum() * extra_gap);
+                        settings
+                    },
+                    Some(Box::new(|state: &App| {
+                        crate::popup::view(state).map(cosmic::Action::App)
+                    })),
+                )))
             }
             Message::PopupClosed => {
                 self.popup_id = None;

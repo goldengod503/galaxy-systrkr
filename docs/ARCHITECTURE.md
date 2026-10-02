@@ -173,6 +173,17 @@ is documented here so a future contributor doesn't try to "fix" it.
 constraint, not the sampling cost. A configurable N would surface a UI
 slider for marginal value; the YAGNI line is drawn here.
 
+### Popup frosting follows the COSMIC theme; no applet setting
+
+`src/app.rs` `Message::TogglePopup` passes `|_| Default::default()` as
+the `LiveSettings` argument to `app_popup`, leaving `blur: None` so
+libcosmic decides per surface type. For applet popups that resolves to
+the theme's `frosted_applets` flag (Settings → Appearance), applied via
+the compositor's `ext-background-effect-v1` protocol. **Rationale:**
+matches stock COSMIC applets and needs no config key. Rejected
+alternative: an applet-level "Frosted glass" toggle — would diverge
+from the system setting the user already controls.
+
 ## Known-deferred issues
 
 ### Synchronous sampling on the UI thread

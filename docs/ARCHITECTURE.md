@@ -126,14 +126,14 @@ or don't notice the dlopen."
 
 `src/config.rs:4` pins `CONFIG_VERSION = 2`; bumped from 1 when Ollama
 fields landed. The schema is live-reloaded via
-`config_subscription` in `app.rs:427`. **Rationale:** cosmic-config
+`config_subscription` in `app.rs:429`. **Rationale:** cosmic-config
 silently rejects entries that don't match the version, so a missed
 bump produces "settings don't persist" symptoms. The constant exists
 to make the bump deliberate.
 
 ### Ollama probing is opt-in and only subscribes when enabled
 
-`src/app.rs:432-436`. The 5-second `OllamaTick` subscription is only
+`src/app.rs:435-439`. The 5-second `OllamaTick` subscription is only
 added to the batch when `config.show_ollama` is true. **Rationale:**
 users without ollama installed should pay zero overhead. Reqwest +
 tokio are already in the dependency graph, but the network round-trip
@@ -141,8 +141,10 @@ should not happen unprompted.
 
 ### `Sampler::tick()` runs synchronously on the UI thread
 
-`src/sampler/mod.rs:75-88` is called from `Message::Tick` in `app.rs:113`.
-Sysinfo and sysfs reads benchmark well under 1 ms in practice.
+`src/sampler/mod.rs:81-97` is called from `Message::Tick` in `app.rs:113`.
+The CPU/memory/sysfs reads are cheap (about 2.4 ms of CPU per tick
+measured 2026-11-14); the per-process scans are not, and are gated
+separately — see the next entry.
 **Rationale:** introducing a worker thread would require channels,
 backpressure, and would also force `Sample` to be `Send + 'static`. The
 current cost is measured, not assumed; reopen if any backend ever
@@ -155,6 +157,20 @@ compatibility pre-positioning** for the day this decision is revisited
 concrete backend is naturally `Send` today; removing the bound saves
 nothing and would have to be re-added the moment threading is
 reconsidered.
+
+### Per-process scans run only while the popup is open
+
+`Sampler::tick(with_procs)` (`src/sampler/mod.rs:81-97`) skips
+`top_procs()` (`src/sampler/mod.rs:99-110`) unless `App::popup_id` is
+set (`src/app.rs:114`); opening the popup scans once immediately
+(`src/app.rs:152-154`). **Rationale:** sysinfo's
+`refresh_processes_specifics(All)` cost about 66 ms of CPU per call
+(562 processes / 2,880 tasks, 16 cores, sysinfo 0.32.1), which at the
+500 ms tick was ~13% of a core per applet instance, and the lists are
+only rendered in `src/popup.rs:24-28`. Usage figures are deltas against
+the previous scan, so the scan on open reports an average since the
+popup was last open (nothing on the very first open) and the next tick
+is accurate.
 
 ### Two `NvmlLib::init()` handles — one for stats, one for procs — is deliberate
 
@@ -169,7 +185,7 @@ is documented here so a future contributor doesn't try to "fix" it.
 
 ### Top-N hardcoded to 5 for both CPU and GPU process lists
 
-`src/sampler/mod.rs:81-86`. **Rationale:** popup vertical space is the
+`TOP_N` in `src/sampler/mod.rs:41`. **Rationale:** popup vertical space is the
 constraint, not the sampling cost. A configurable N would surface a UI
 slider for marginal value; the YAGNI line is drawn here.
 
@@ -191,8 +207,11 @@ from the system setting the user already controls.
 `Sampler::tick()` blocks the cosmic applet's update loop. Today's
 backends are fast; if a future backend (e.g., a Vulkan-based GPU
 counter) needs >10 ms per sample the applet will visibly jank at
-500 ms tick. `FdinfoProcs::top_n` is the heaviest path today — it
-walks every numeric `/proc/{pid}/fd/` directory per tick — and emits
+500 ms tick. The per-process scans are the heaviest path and already
+exceed that budget in CPU time while the popup is open (see "Per-process
+scans run only while the popup is open"); wall-clock time on the UI
+thread has not been measured. `FdinfoProcs::top_n` walks every numeric
+`/proc/{pid}/fd/` directory per scan and emits
 its elapsed time via `tracing::debug!(target = "galaxy_systrkr",
 "FdinfoProcs::top_n", elapsed_us, scanned)` so the reopen trigger
 below has a real signal source instead of being purely aspirational
@@ -243,6 +262,9 @@ becomes a goal.
 
 ## Recent architectural changes
 
+- **2026-11-14** — Per-process CPU/GPU scans gated on the popup being
+  open (GS-05). `Sampler::tick` gained a `with_procs` flag and
+  `Sampler::top_procs` was split out.
 - **2026-05-23** — `robot:architectural-analysis` on `src/sampler/`
   followed by a five-commit landing: `ef351c9` (ConfigUpdated reinits
   Sampler when gpu_index changes), `8c76727` (FdinfoProcs GC against

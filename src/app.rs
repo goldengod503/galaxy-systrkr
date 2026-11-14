@@ -111,7 +111,7 @@ impl cosmic::Application for App {
     fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Tick => {
-                let sample = self.sampler.tick();
+                let sample = self.sampler.tick(self.popup_id.is_some());
                 if let Some(v) = sample.cpu.utilization_pct {
                     self.cpu_history.push(v);
                 }
@@ -149,6 +149,9 @@ impl cosmic::Application for App {
                     |state: &mut App| {
                         let new_id = Id::unique();
                         state.popup_id = Some(new_id);
+                        // Scan now so the lists aren't blank until the next tick.
+                        (state.latest.top_cpu_procs, state.latest.top_gpu_procs) =
+                            state.sampler.top_procs();
                         let mut settings = state.core.applet.get_popup_settings(
                             state.core.main_window_id().unwrap(),
                             new_id,

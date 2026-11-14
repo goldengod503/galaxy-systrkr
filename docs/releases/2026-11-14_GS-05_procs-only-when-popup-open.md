@@ -1,7 +1,7 @@
 # GS-05 — Per-process scans only while the popup is open
 
 **Date:** 2026-11-14
-**Branch:** `perf/procs-only-when-popup-open` (not yet merged)
+**Branch:** `perf/procs-only-when-popup-open` (merged to `main`)
 **Commit:** `7ea6bae` — `fix(sampler): scan processes only while the popup is open`
 
 ## Summary
@@ -49,8 +49,11 @@ in the popup. The scan now runs only while the popup is open.
 - Clippy: `cargo clippy --all-features -- -D warnings` clean.
 - Build: `cargo check --no-default-features` and
   `cargo build --release` clean.
-- **Not yet done:** install and measure the live applet with the popup
-  closed and open. Held at Peter's request on 2026-11-14.
+- Live: `just install`, restarted cosmic-panel (two applet instances).
+  Popup closed, three 30 s windows: 0.8-0.9% and 0.9-1.9% of a core
+  per instance (the 1.9% was the first window after start; the next
+  two read 0.86% and 0.96%). Before: 13.7% and 13.9%.
+- **Not measured:** CPU with the popup open.
 
 ## Docs Updated
 
